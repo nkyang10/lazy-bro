@@ -138,6 +138,7 @@ async function getSelectedText() {
 
 // Inject a click action into the active tab's MAIN world.
 // Use MAIN (not ISOLATED) so the LLM's code can touch page-level variables.
+// Supports optional frameSelector to target same-origin iframes.
 async function executeClickAction(action) {
   return new Promise((resolve) => {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
@@ -145,8 +146,28 @@ async function executeClickAction(action) {
       chrome.scripting.executeScript({
         target: { tabId: tabs[0].id },
         world: 'MAIN',
-        func: (code) => { try { eval(code); } catch (e) { console.error(e); } },
-        args: [action.action]
+        func: (code, frameSelector) => {
+          if (frameSelector) {
+            const iframe = document.querySelector(frameSelector);
+            if (!iframe) {
+              console.warn('executeClickAction: iframe not found for selector:', frameSelector);
+              return;
+            }
+            try {
+              const win = iframe.contentWindow;
+              if (!win) {
+                console.warn('executeClickAction: cross-origin iframe, cannot access:', frameSelector);
+                return;
+              }
+              win.eval(code);
+            } catch (e) {
+              console.error('executeClickAction: iframe error:', e);
+            }
+          } else {
+            try { eval(code); } catch (e) { console.error(e); }
+          }
+        },
+        args: [action.action, action.frameSelector || null]
       }, () => {
         if (chrome.runtime.lastError) console.error('Click error:', chrome.runtime.lastError);
         resolve();
@@ -156,16 +177,38 @@ async function executeClickAction(action) {
 }
 
 // Run an array of non-click actions (select / info) in the active tab.
+// Supports optional frameSelector per action to target same-origin iframes.
 async function executeActions(actions) {
   const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tabs[0] || tabs[0].url?.startsWith('chrome://')) return;
   for (const item of actions) {
     const code = typeof item === 'string' ? item : item.action;
+    const frameSelector = typeof item === 'string' ? undefined : item.frameSelector;
     chrome.scripting.executeScript({
       target: { tabId: tabs[0].id },
       world: 'MAIN',
-      func: (c) => { try { eval(c); } catch (e) { console.error(e); } },
-      args: [code]
+      func: (c, fs) => {
+        if (fs) {
+          const iframe = document.querySelector(fs);
+          if (!iframe) {
+            console.warn('executeActions: iframe not found for selector:', fs);
+            return;
+          }
+          try {
+            const win = iframe.contentWindow;
+            if (!win) {
+              console.warn('executeActions: cross-origin iframe, cannot access:', fs);
+              return;
+            }
+            win.eval(c);
+          } catch (e) {
+            console.error('executeActions: iframe error:', e);
+          }
+        } else {
+          try { eval(c); } catch (e) { console.error(e); }
+        }
+      },
+      args: [code, frameSelector || null]
     }, () => { if (chrome.runtime.lastError) console.error(chrome.runtime.lastError); });
   }
 }

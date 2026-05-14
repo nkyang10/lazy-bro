@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>iframe Click Action — Verification</title>
+  <style>
+    body { font-family: monospace; max-width: 960px; margin: 0 auto; padding: 20px; }
+    h1 { border-bottom: 2px solid #333; }
+    .test { margin: 8px 0; padding: 6px 10px; border-radius: 4px; }
+    .pass { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+    .fail { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+    .info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+    pre { background: #f4f4f4; padding: 10px; overflow-x: auto; font-size: 12px; }
+    #results { margin: 10px 0 20px; }
+    iframe { border: 1px solid #ccc; margin: 10px 0; width: 100%; height: 120px; }
+  </style>
+</head>
+<body>
+
+<h1>iframe Click Action Verification</h1>
+
+<div class="info">
+  <strong>Purpose:</strong> Verify <code>executeClickAction()</code> and <code>executeActions()</code>
+  support <code>frameSelector</code> to target same-origin iframes, handle cross-origin
+  gracefully, and preserve backward compatibility for non-iframe actions.
+</div>
+
+<div id="results"></div>
+
+<h2>Top-Level Controls</h2>
+<button id="top-btn" onclick="topBtnClicked()">Top-Level Button</button>
+<span id="top-result" style="margin-left: 10px;"></span>
+
+<h2>Same-Origin iframe (srcdoc)</h2>
+<iframe id="click-test-iframe" class="content-frame"
+  srcdoc="<html><body>
+    <h3>Click Test iframe</h3>
+    <button id='iframe-btn' onclick='iframeBtnClicked()'>Click Me Inside iframe</button>
+    <span id='iframe-result'></span>
+    <script>
+      function iframeBtnClicked() {
+        document.getElementById('iframe-result').textContent = 'CLICKED_IN_IFRAME';
+      }
+    </script>
+  </body></html>"></iframe>
+
+<h2>Same-Origin iframe with Info Action</h2>
+<iframe id="info-test-iframe"
+  srcdoc="<html><body>
+    <h3>Info Test iframe</h3>
+    <p id='info-text'>TEXT_FROM_IFRAME</p>
+  </body></html>"></iframe>
+
+<h2>Cross-Origin iframe (YouTube)</h2>
+<iframe id="cross-origin-frame" src="https://www.youtube.com/embed/dQw4w9WgXcQ" class="external-embed"></iframe>
+
+<h2>Results Log</h2>
+<pre id="log"></pre>
+
+<script>
+var results = document.getElementById('results');
+var log = document.getElementById('log');
+
+function addResult(name, passed, detail) {
+  var div = document.createElement('div');
+  div.className = 'test ' + (passed ? 'pass' : 'fail');
+  div.innerHTML = (passed ? 'PASS' : 'FAIL') + ' — ' + name +
+    (detail ? '<br><small>' + detail + '</small>' : '');
+  results.appendChild(div);
+}
+
+function logMsg(msg) {
+  log.textContent += msg + '\n';
+}
+
+function topBtnClicked() {
+  document.getElementById('top-result').textContent = 'CLICKED_TOP_LEVEL';
+}
+
+function runTopLevelClickAction() {
+  logMsg('[SIM] executeClickAction: top-level button (no frameSelector)');
+  try {
+    eval("document.querySelector('#top-btn').click()");
+    var result = document.getElementById('top-result').textContent;
+    addResult(
+      'Top-level click (no frameSelector) executes in top document',
+      result === 'CLICKED_TOP_LEVEL',
+      'Expected: CLICKED_TOP_LEVEL, Got: ' + result
+    );
+  } catch (e) {
+    addResult('Top-level click (no frameSelector)', false, 'Error: ' + e.message);
+  }
+}
+
+function runIFrameClickAction() {
+  logMsg('[SIM] executeClickAction: #click-test-iframe with frameSelector');
+  var frameSelector = '#click-test-iframe';
+  var iframe = document.querySelector(frameSelector);
+  if (!iframe) {
+    addResult('Iframe found via frameSelector', false, 'Selector returned null');
+    return;
+  }
+  addResult('Iframe found via frameSelector', true,
+    'Found iframe with id=' + iframe.id + ', selector=' + frameSelector);
+
+  try {
+    var win = iframe.contentWindow;
+    if (!win) {
+      addResult('Iframe contentWindow accessible', false, 'contentWindow is null (cross-origin?)');
+      return;
+    }
+    addResult('Iframe contentWindow accessible', true, 'Same-origin, contentWindow resolved');
+
+    win.eval("document.querySelector('#iframe-btn').click()");
+
+    var iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+    var resultEl = iframeDoc.querySelector('#iframe-result');
+    var result = resultEl ? resultEl.textContent : '';
+
+    addResult(
+      'Click action executes inside iframe via contentWindow.eval()',
+      result === 'CLICKED_IN_IFRAME',
+      'Expected: CLICKED_IN_IFRAME, Got: ' + (result || '(empty)')
+    );
+  } catch (e) {
+    addResult('Click inside iframe', false, 'Error: ' + e.message + ' (' + e.name + ')');
+  }
+}
+
+function runIFrameInfoAction() {
+  logMsg('[SIM] executeActions: #info-test-iframe with frameSelector (info action)');
+  var frameSelector = '#info-test-iframe';
+  var iframe = document.querySelector(frameSelector);
+  if (!iframe) {
+    addResult('Info iframe found', false, 'Selector returned null');
+    return;
+  }
+  try {
+    var win = iframe.contentWindow;
+    win.eval("var extracted = document.querySelector('#info-text').textContent;");
+    var extracted = win.extracted;
+    addResult(
+      'Info action extracts data from iframe via contentWindow.eval()',
+      extracted === 'TEXT_FROM_IFRAME',
+      'Expected: TEXT_FROM_IFRAME, Got: ' + (extracted || '(undefined)')
+    );
+  } catch (e) {
+    addResult('Info action in iframe', false, 'Error: ' + e.name + ': ' + e.message);
+  }
+}
+
+function runCrossOriginTest() {
+  logMsg('[SIM] executeClickAction: #cross-origin-frame (cross-origin)');
+  var frameSelector = '#cross-origin-frame';
+  var iframe = document.querySelector(frameSelector);
+  if (!iframe) {
+    addResult('Cross-origin iframe found', false, 'Selector returned null');
+    return;
+  }
+  addResult('Cross-origin iframe found via selector', true,
+    'Found iframe with id=' + iframe.id);
+
+  var canAccess = true;
+  try {
+    var doc = iframe.contentDocument;
+    if (!doc) canAccess = false;
+  } catch (e) {
+    canAccess = false;
+    addResult(
+      'Cross-origin iframe access throws gracefully',
+      e.name === 'SecurityError' || e.message.indexOf('cross-origin') !== -1 || e.message.indexOf('Blocked') !== -1,
+      'SecurityError caught: ' + e.name + ' — ' + e.message
+    );
+  }
+
+  if (canAccess) {
+    addResult('Cross-origin iframe access (unexpected success — may be same-origin in test)',
+      false, 'contentDocument was accessible (not a valid cross-origin test in this context)');
+  }
+}
+
+function runBackwardCompatTest() {
+  logMsg('[SIM] executeActions: plain info action with no frameSelector');
+  try {
+    eval("document.getElementById('top-result').textContent = 'BACKWARD_COMPAT_OK';");
+    var result = document.getElementById('top-result').textContent;
+    addResult(
+      'Backward compat: action without frameSelector runs in top document',
+      result === 'BACKWARD_COMPAT_OK',
+      'Expected: BACKWARD_COMPAT_OK, Got: ' + result
+    );
+  } catch (e) {
+    addResult('Backward compat test', false, 'Error: ' + e.message);
+  }
+}
+
+function runExecuteActionsMultiTest() {
+  logMsg('[SIM] executeActions: multiple items (one with frameSelector, one without)');
+  var actions = [
+    { action: "document.getElementById('top-result').textContent = 'MULTI_TEST_A';", type: 'info' },
+    { action: "document.querySelector('#iframe-btn')?.click();", type: 'info', frameSelector: '#click-test-iframe' }
+  ];
+
+  for (var i = 0; i < actions.length; i++) {
+    var item = actions[i];
+    var code = typeof item === 'string' ? item : item.action;
+    var fs = typeof item === 'string' ? undefined : item.frameSelector;
+
+    try {
+      if (fs) {
+        var iframe = document.querySelector(fs);
+        if (iframe && iframe.contentWindow) {
+          iframe.contentWindow.eval(code);
+        }
+      } else {
+        eval(code);
+      }
+    } catch (e) {
+      logMsg('  Error on action ' + i + ': ' + e.message);
+    }
+  }
+
+  var topResult = document.getElementById('top-result').textContent;
+  var iframeDoc2 = document.querySelector('#click-test-iframe').contentDocument;
+  var iframeResult = iframeDoc2.querySelector('#iframe-result').textContent;
+
+  addResult(
+    'executeActions mixed: top action (no frameSelector) succeeds',
+    topResult === 'MULTI_TEST_A',
+    'Expected: MULTI_TEST_A, Got: ' + topResult
+  );
+  addResult(
+    'executeActions mixed: iframe action (with frameSelector) succeeds',
+    iframeResult === 'CLICKED_IN_IFRAME',
+    'Expected: CLICKED_IN_IFRAME, Got: ' + iframeResult
+  );
+}
+
+function runAllTests() {
+  results.innerHTML = '';
+  log.textContent = '';
+
+  runTopLevelClickAction();
+  runIFrameClickAction();
+  runIFrameInfoAction();
+  runCrossOriginTest();
+  runBackwardCompatTest();
+  runExecuteActionsMultiTest();
+
+  var summaryPass = results.querySelectorAll('.pass').length;
+  var summaryFail = results.querySelectorAll('.fail').length;
+  var summary = document.createElement('div');
+  summary.className = 'info';
+  summary.innerHTML = '<strong>Summary:</strong> ' + summaryPass + ' passed, ' + summaryFail + ' failed of ' +
+    (summaryPass + summaryFail) + ' tests. ' +
+    (summaryFail === 0 ? 'ALL TESTS PASSED.' : 'SOME TESTS FAILED — review above.');
+  results.insertBefore(summary, results.firstChild);
+}
+
+window.addEventListener('load', function() {
+  setTimeout(runAllTests, 2000);
+});
+</script>
+
+</body>
+</html>
