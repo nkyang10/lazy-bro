@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.maestro/
+.env
+*.zip
+package-lock.json
+Thumbs.db
+.DS_Store

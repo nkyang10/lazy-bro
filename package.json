@@ -1,0 +1,13 @@
+{
+  "name": "lazy-bro",
+  "version": "1.0.0",
+  "description": "Lazy Browser — AI-powered Chrome extension with OpenAI API integration",
+  "main": "build.js",
+  "scripts": {
+    "build": "node build.js",
+    "test-extension": "echo 'Load unpacked extension from dist directory'"
+  },
+  "dependencies": {
+    "archiver": "^6.0.1"
+  }
+}
