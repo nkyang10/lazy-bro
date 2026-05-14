@@ -81,22 +81,60 @@ async function executeActions(actions) {
   }
 }
 
-// Block until the active tab finishes loading (status === 'complete'),
-// with a configurable timeout to avoid hanging forever.
-async function waitForPageLoad(timeoutMs) {
+async function waitForPageReady() {
+  const MAX_TIMEOUT = 5000;
+  const POLL_INTERVAL = 150;
+
   return new Promise((resolve) => {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       if (!tabs[0]) { resolve(); return; }
+
       const tabId = tabs[0].id;
-      const timeout = setTimeout(() => resolve(), timeoutMs);
-      const listener = (updatedTabId, changeInfo) => {
-        if (updatedTabId === tabId && changeInfo.status === 'complete') {
-          clearTimeout(timeout);
-          chrome.tabs.onUpdated.removeListener(listener);
-          resolve();
+      const url = tabs[0].url || '';
+
+      if (url.startsWith('chrome://')) { resolve(); return; }
+
+      const startTime = Date.now();
+      let intervalId = null;
+      let resolved = false;
+
+      const cleanup = () => {
+        if (intervalId !== null) {
+          clearInterval(intervalId);
+          intervalId = null;
         }
       };
-      chrome.tabs.onUpdated.addListener(listener);
+
+      const safeResolve = () => {
+        if (resolved) return;
+        resolved = true;
+        cleanup();
+        resolve();
+      };
+
+      intervalId = setInterval(() => {
+        if (Date.now() - startTime >= MAX_TIMEOUT) {
+          safeResolve();
+          return;
+        }
+
+        chrome.scripting.executeScript(
+          {
+            target: { tabId: tabId },
+            func: () => document.readyState
+          },
+          (results) => {
+            if (chrome.runtime.lastError) {
+              safeResolve();
+              return;
+            }
+            const state = results?.[0]?.result;
+            if (state === 'interactive' || state === 'complete') {
+              safeResolve();
+            }
+          }
+        );
+      }, POLL_INTERVAL);
     });
   });
 }
@@ -211,7 +249,7 @@ async function processChatRequest(input) {
           await executeClickAction(clickAction);
 
           updateStatus('processing', { chatProgress: 'Waiting for page to load...' });
-          await waitForPageLoad(5000);
+          await waitForPageReady();
           pageContent = await getPageHTML();
 
           // Rebuild messages with fresh DOM. Only keep system prompt + user question + current DOM.
@@ -227,7 +265,7 @@ async function processChatRequest(input) {
           // After the final click, call LLM one more time on the destination page
           // to get the actual answer (select/info action).
           updateStatus('processing', { chatProgress: 'Waiting for page to load...' });
-          await waitForPageLoad(5000);
+          await waitForPageReady();
           pageContent = await getPageHTML();
           messages = [
             { role: 'system', content: SystemPrompt.base },
