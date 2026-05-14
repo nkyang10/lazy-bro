@@ -20,14 +20,103 @@ function parseLLMResponse(raw) {
   return null;
 }
 
-// Grab the full DOM of the active tab.
+// Grab the full DOM of the active tab, including same-origin iframe content.
 // Returns empty string for chrome:// pages (scripting blocked).
+// Runs in MAIN world to access iframe contentDocument.
 async function getPageHTML() {
   return new Promise((resolve) => {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       if (!tabs[0] || tabs[0].url?.startsWith('chrome://')) { resolve(''); return; }
       chrome.scripting.executeScript(
-        { target: { tabId: tabs[0].id }, func: () => document.documentElement.outerHTML },
+        {
+          target: { tabId: tabs[0].id },
+          world: 'MAIN',
+          func: () => {
+            const MAX_DEPTH = 3;
+
+            function buildSelector(el) {
+              if (el.id) return el.tagName.toLowerCase() + '#' + el.id;
+              let path = [];
+              let current = el;
+              while (current && current !== document.documentElement) {
+                let segment = current.tagName.toLowerCase();
+                if (current.id) {
+                  segment += '#' + current.id;
+                  path.unshift(segment);
+                  break;
+                }
+                const parent = current.parentElement;
+                if (parent) {
+                  const siblings = Array.from(parent.children).filter(
+                    (c) => c.tagName === current.tagName
+                  );
+                  if (siblings.length > 1) {
+                    const index = siblings.indexOf(current) + 1;
+                    segment += ':nth-of-type(' + index + ')';
+                  }
+                }
+                path.unshift(segment);
+                current = parent;
+              }
+              return path.join(' > ');
+            }
+
+            function getIframeAttrs(iframe) {
+              const parts = [];
+              const src = iframe.getAttribute('src');
+              if (src) parts.push('src="' + src.replace(/"/g, '\\"') + '"');
+              if (iframe.id) parts.push('id="' + iframe.id + '"');
+              const name = iframe.getAttribute('name');
+              if (name) parts.push('name="' + name + '"');
+              const cls = iframe.className;
+              if (cls && typeof cls === 'string' && cls.trim())
+                parts.push('class="' + cls.trim() + '"');
+              return parts.join(',');
+            }
+
+            function collectIframeDOMs(doc, depth) {
+              let result = '';
+              if (depth >= MAX_DEPTH) return result;
+
+              const iframes = doc.querySelectorAll('iframe');
+              for (let i = 0; i < iframes.length; i++) {
+                const iframe = iframes[i];
+                const src = (iframe.getAttribute('src') || '').trim();
+
+                if (!src || src === 'about:blank') continue;
+
+                let iframeDoc;
+                try {
+                  iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+                } catch (_e) {
+                  continue;
+                }
+                if (!iframeDoc || !iframeDoc.documentElement) continue;
+
+                let iframeHTML;
+                try {
+                  iframeHTML = iframeDoc.documentElement.outerHTML;
+                } catch (_e) {
+                  continue;
+                }
+                if (!iframeHTML) continue;
+
+                const selector = buildSelector(iframe);
+                const attrs = getIframeAttrs(iframe);
+                let marker = '<!-- IFRAME[selector="' + selector + '"';
+                if (attrs) marker += ',' + attrs;
+                marker += ',depth=' + (depth + 1) + '] START -->';
+
+                result += '\n' + marker + '\n' + iframeHTML + '\n<!-- IFRAME END -->\n';
+
+                result += collectIframeDOMs(iframeDoc, depth + 1);
+              }
+              return result;
+            }
+
+            return document.documentElement.outerHTML + collectIframeDOMs(document, 0);
+          }
+        },
         (results) => resolve(results?.[0]?.result || '')
       );
     });
