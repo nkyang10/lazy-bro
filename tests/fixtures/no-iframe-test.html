@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>No-iframe Regression Test</title>
+  <style>
+    body { font-family: monospace; max-width: 960px; margin: 0 auto; padding: 20px; }
+    .pass { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; padding: 6px 10px; border-radius: 4px; margin: 8px 0; }
+    .fail { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; padding: 6px 10px; border-radius: 4px; margin: 8px 0; }
+    pre { background: #f4f4f4; padding: 10px; overflow-x: auto; }
+  </style>
+</head>
+<body>
+
+<h1>No-iframe Regression Test</h1>
+<p>This page contains <strong>no iframes</strong>. Verify that getPageHTML() still returns the main document DOM correctly.</p>
+
+<div>
+  <h2>Section A</h2>
+  <p>Regular paragraph content.</p>
+  <ul>
+    <li>List item 1</li>
+    <li>List item 2</li>
+  </ul>
+</div>
+
+<div id="unique-marker" data-test="regression">
+  <h2>Section B — Unique Marker</h2>
+  <p>This text contains a unique identifier: REGRESSION_TEST_MARKER_42</p>
+</div>
+
+<footer>
+  <p>Footer content goes here.</p>
+</footer>
+
+<div id="results"></div>
+
+<script>
+const MAX_DEPTH = 3;
+
+function buildSelector(el) {
+  if (el.id) return el.tagName.toLowerCase() + '#' + el.id;
+  let path = [];
+  let current = el;
+  while (current && current !== document.documentElement) {
+    let segment = current.tagName.toLowerCase();
+    if (current.id) {
+      segment += '#' + current.id;
+      path.unshift(segment);
+      break;
+    }
+    const parent = current.parentElement;
+    if (parent) {
+      const siblings = Array.from(parent.children).filter(
+        (c) => c.tagName === current.tagName
+      );
+      if (siblings.length > 1) {
+        const index = siblings.indexOf(current) + 1;
+        segment += ':nth-of-type(' + index + ')';
+      }
+    }
+    path.unshift(segment);
+    current = parent;
+  }
+  return path.join(' > ');
+}
+
+function getIframeAttrs(iframe) {
+  const parts = [];
+  const src = iframe.getAttribute('src');
+  if (src) parts.push('src="' + src.replace(/"/g, '\\"') + '"');
+  if (iframe.id) parts.push('id="' + iframe.id + '"');
+  const name = iframe.getAttribute('name');
+  if (name) parts.push('name="' + name + '"');
+  const cls = iframe.className;
+  if (cls && typeof cls === 'string' && cls.trim())
+    parts.push('class="' + cls.trim() + '"');
+  return parts.join(',');
+}
+
+function collectIframeDOMs(doc, depth) {
+  let result = '';
+  if (depth >= MAX_DEPTH) return result;
+
+  const iframes = doc.querySelectorAll('iframe');
+  for (let i = 0; i < iframes.length; i++) {
+    const iframe = iframes[i];
+    const src = (iframe.getAttribute('src') || '').trim();
+
+    if (!src || src === 'about:blank') continue;
+
+    let iframeDoc;
+    try {
+      iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+    } catch (_e) {
+      continue;
+    }
+    if (!iframeDoc || !iframeDoc.documentElement) continue;
+
+    let iframeHTML;
+    try {
+      iframeHTML = iframeDoc.documentElement.outerHTML;
+    } catch (_e) {
+      continue;
+    }
+    if (!iframeHTML) continue;
+
+    const selector = buildSelector(iframe);
+    const attrs = getIframeAttrs(iframe);
+    let marker = '<!-- IFRAME[selector="' + selector + '"';
+    if (attrs) marker += ',' + attrs;
+    marker += ',depth=' + (depth + 1) + '] START -->';
+
+    result += '\n' + marker + '\n' + iframeHTML + '\n<!-- IFRAME END -->\n';
+
+    result += collectIframeDOMs(iframeDoc, depth + 1);
+  }
+  return result;
+}
+
+function extractPageHTML() {
+  return document.documentElement.outerHTML + collectIframeDOMs(document, 0);
+}
+
+window.addEventListener('load', function() {
+  setTimeout(function() {
+    var output = extractPageHTML();
+    var results = document.getElementById('results');
+
+    var tests = [
+      {
+        name: 'Main document content preserved (no iframes page)',
+        pass: output.indexOf('REGRESSION_TEST_MARKER_42') !== -1
+      },
+      {
+        name: 'No IFRAME markers in output (page has no iframes)',
+        pass: output.indexOf('<!-- IFRAME[') === -1
+      },
+      {
+        name: 'No IFRAME END markers in output',
+        pass: output.indexOf('<!-- IFRAME END -->') === -1
+      },
+      {
+        name: 'Regular DOM elements present (h1, p, ul, footer)',
+        pass: output.indexOf('<h1') !== -1 && output.indexOf('<footer') !== -1
+      }
+    ];
+
+    var passed = 0, failed = 0;
+    tests.forEach(function(t) {
+      var div = document.createElement('div');
+      div.className = t.pass ? 'pass' : 'fail';
+      div.textContent = (t.pass ? 'PASS' : 'FAIL') + ' — ' + t.name;
+      results.appendChild(div);
+      if (t.pass) passed++; else failed++;
+    });
+
+    var summary = document.createElement('div');
+    summary.className = passed === tests.length ? 'pass' : 'fail';
+    summary.innerHTML = '<strong>Summary:</strong> ' + passed + ' passed, ' + failed + ' failed.';
+    results.insertBefore(summary, results.firstChild);
+
+    var pre = document.createElement('pre');
+    pre.textContent = output;
+    results.appendChild(document.createElement('h3')).textContent = 'Raw Extraction Output:';
+    results.appendChild(pre);
+  }, 500);
+});
+</script>
+
+</body>
+</html>

@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>iframe Extraction — Verification</title>
+  <style>
+    body { font-family: monospace; max-width: 960px; margin: 0 auto; padding: 20px; }
+    h1 { border-bottom: 2px solid #333; }
+    .test { margin: 8px 0; padding: 6px 10px; border-radius: 4px; }
+    .pass { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+    .fail { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+    .info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+    pre { background: #f4f4f4; padding: 10px; overflow-x: auto; max-height: 500px; overflow-y: auto; font-size: 12px; }
+    #results { margin-top: 10px; }
+  </style>
+</head>
+<body>
+
+<h1>iframe Extraction Verification</h1>
+
+<div class="info">
+  <strong>Purpose:</strong> Verify <code>getPageHTML()</code> extracts same-origin iframe DOM
+  with markers, skips cross-origin/blank/no-src iframes, and handles nested iframes
+  up to depth 3. All same-origin iframes use <code>srcdoc</code> so no HTTP server is needed.
+</div>
+
+<div id="results"></div>
+
+<h2>Main Document</h2>
+<p id="main-marker">MAIN_DOC_UNIQUE_MARKER — verifies main document DOM is preserved.</p>
+
+<!-- Same-origin iframe with id, name, and class (via srcdoc) -->
+<iframe id="frame1" name="frame-one" class="content-frame"
+  srcdoc="<html><body><h2>Frame 1 Content</h2><p>FRAME1_UNIQUE — inside frame1 (id=frame1, name=frame-one, class=content-frame).</p><ul><li>A</li><li>B</li></ul></body></html>"></iframe>
+
+<!-- Same-origin iframe without id (selector uses nth-of-type) -->
+<iframe srcdoc="<html><body><h3>Frame 2 Content</h3><p>FRAME2_UNIQUE — inside frame2 (no id, no name). Selector uses nth-of-type.</p></body></html>"></iframe>
+
+<!-- Cross-origin iframe (YouTube embed — contentDocument access should throw) -->
+<iframe id="cross-origin-frame" src="https://www.youtube.com/embed/dQw4w9WgXcQ" class="external-embed"></iframe>
+
+<!-- about:blank iframe (src="about:blank" — should be skipped by src check) -->
+<iframe id="blank-frame" src="about:blank"></iframe>
+
+<!-- No-src iframe (no src attribute at all — should be skipped) -->
+<iframe id="no-src-frame"></iframe>
+
+<!-- Same-origin iframe with NESTED iframes at depth 2 and depth 3 -->
+<iframe id="parent-frame"
+  srcdoc="<html><body><h2>Parent Frame</h2><p>PARENT_UNIQUE — contains a nested iframe at depth 2.</p><iframe id='nested-frame' name='nested' srcdoc='<html><body><h3>Nested Frame (Depth 2)</h3><p>NESTED_UNIQUE — inside nested frame at depth 2.</p><iframe id=&quot;deep-nested&quot; srcdoc=&quot;<html><body><h4>Deep Nested (Depth 3)</h4><p>DEEP_UNIQUE — at max depth 3.</p><iframe id=&apos;too-deep&apos; srcdoc=&apos;<html><body><p>SHOULD_NOT_APPEAR (depth 4)</p></body></html>&apos;></iframe></body></html>&quot;></iframe></body></html>'></iframe></body></html>"></iframe>
+
+<script>
+// ─── Exact copy of the extraction function from background.js ───
+const MAX_DEPTH = 3;
+
+function buildSelector(el) {
+  if (el.id) return el.tagName.toLowerCase() + '#' + el.id;
+  let path = [];
+  let current = el;
+  while (current && current !== document.documentElement) {
+    let segment = current.tagName.toLowerCase();
+    if (current.id) {
+      segment += '#' + current.id;
+      path.unshift(segment);
+      break;
+    }
+    const parent = current.parentElement;
+    if (parent) {
+      const siblings = Array.from(parent.children).filter(
+        (c) => c.tagName === current.tagName
+      );
+      if (siblings.length > 1) {
+        const index = siblings.indexOf(current) + 1;
+        segment += ':nth-of-type(' + index + ')';
+      }
+    }
+    path.unshift(segment);
+    current = parent;
+  }
+  return path.join(' > ');
+}
+
+function getIframeAttrs(iframe) {
+  const parts = [];
+  const src = iframe.getAttribute('src');
+  if (src) parts.push('src="' + src.replace(/"/g, '\\"') + '"');
+  if (iframe.id) parts.push('id="' + iframe.id + '"');
+  const name = iframe.getAttribute('name');
+  if (name) parts.push('name="' + name + '"');
+  const cls = iframe.className;
+  if (cls && typeof cls === 'string' && cls.trim())
+    parts.push('class="' + cls.trim() + '"');
+  return parts.join(',');
+}
+
+function collectIframeDOMs(doc, depth) {
+  let result = '';
+  if (depth >= MAX_DEPTH) return result;
+
+  const iframes = doc.querySelectorAll('iframe');
+  for (let i = 0; i < iframes.length; i++) {
+    const iframe = iframes[i];
+    const src = (iframe.getAttribute('src') || '').trim();
+
+    if (!src || src === 'about:blank') continue;
+
+    let iframeDoc;
+    try {
+      iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+    } catch (_e) {
+      continue;
+    }
+    if (!iframeDoc || !iframeDoc.documentElement) continue;
+
+    let iframeHTML;
+    try {
+      iframeHTML = iframeDoc.documentElement.outerHTML;
+    } catch (_e) {
+      continue;
+    }
+    if (!iframeHTML) continue;
+
+    const selector = buildSelector(iframe);
+    const attrs = getIframeAttrs(iframe);
+    let marker = '<!-- IFRAME[selector="' + selector + '"';
+    if (attrs) marker += ',' + attrs;
+    marker += ',depth=' + (depth + 1) + '] START -->';
+
+    result += '\n' + marker + '\n' + iframeHTML + '\n<!-- IFRAME END -->\n';
+
+    result += collectIframeDOMs(iframeDoc, depth + 1);
+  }
+  return result;
+}
+
+function extractPageHTML() {
+  return document.documentElement.outerHTML + collectIframeDOMs(document, 0);
+}
+
+// ─── Test runner ───
+var results = document.getElementById('results');
+
+function addResult(name, passed, detail) {
+  var div = document.createElement('div');
+  div.className = 'test ' + (passed ? 'pass' : 'fail');
+  div.innerHTML = (passed ? 'PASS' : 'FAIL') + ' — ' + name +
+    (detail ? '<br><small>' + detail + '</small>' : '');
+  results.appendChild(div);
+}
+
+function getIFrameMarkers(output) {
+  var markers = [];
+  var re = /<!-- IFRAME\[selector="([^"]+)"[^\]]*\] START -->/g;
+  var m;
+  while ((m = re.exec(output)) !== null) {
+    markers.push(m[1]);
+  }
+  return markers;
+}
+
+function runTests() {
+  results.innerHTML = '';
+  var output = extractPageHTML();
+  var markers = getIFrameMarkers(output);
+
+  // ── Test 1: Main document DOM preserved ──
+  addResult(
+    'Main document DOM preserved',
+    output.indexOf('MAIN_DOC_UNIQUE_MARKER') !== -1,
+    'Unique main document marker found in output.'
+  );
+
+  // ── Test 2: Same-origin iframe #frame1 extracted with markers ──
+  var hasFrame1Content = output.indexOf('FRAME1_UNIQUE') !== -1;
+  var hasFrame1End = output.indexOf('<!-- IFRAME END -->') !== -1;
+  addResult(
+    'Same-origin iframe #frame1 extracted with IFRAME markers',
+    markers.indexOf('iframe#frame1') !== -1 && hasFrame1Content && hasFrame1End,
+    'Marker: ' + (markers.indexOf('iframe#frame1') !== -1) +
+    ', Content: ' + hasFrame1Content + ', End: ' + hasFrame1End
+  );
+
+  // ── Test 3: Marker includes attribute info ──
+  addResult(
+    'IFRAME marker includes id, name, class attributes',
+    output.indexOf('id="frame1"') !== -1 &&
+    output.indexOf('name="frame-one"') !== -1 &&
+    output.indexOf('class="content-frame"') !== -1,
+    'All three attributes found in marker.'
+  );
+
+  // ── Test 4: Marker includes depth=1 ──
+  addResult(
+    'Top-level iframes have depth=1 marker',
+    output.indexOf('depth=1]') !== -1,
+    'depth=1 marker present in output.'
+  );
+
+  // ── Test 5: Frameless iframe uses nth-of-type selector ──
+  var hasFrame2Content = output.indexOf('FRAME2_UNIQUE') !== -1;
+  var hasNthSelector = output.indexOf('nth-of-type') !== -1;
+  addResult(
+    'Iframe without id uses nth-of-type in selector',
+    hasFrame2Content && hasNthSelector,
+    'Content: ' + hasFrame2Content + ', nth-of-type: ' + hasNthSelector
+  );
+
+  // ── Test 6: Cross-origin iframe produces no IFRAME marker ──
+  addResult(
+    'Cross-origin iframe (YouTube) produces no IFRAME marker',
+    markers.indexOf('iframe#cross-origin-frame') === -1,
+    'Cross-origin iframe correctly skipped (no extraction marker).'
+  );
+
+  // ── Test 7: about:blank iframe skipped ──
+  addResult(
+    'about:blank iframe skipped (no IFRAME marker)',
+    markers.indexOf('iframe#blank-frame') === -1,
+    'src="about:blank" triggers skip in src filter.'
+  );
+
+  // ── Test 8: No-src iframe skipped ──
+  addResult(
+    'No-src iframe skipped (no IFRAME marker)',
+    markers.indexOf('iframe#no-src-frame') === -1,
+    'Iframe without src attribute triggers skip.'
+  );
+
+  // ── Test 9: Nested iframe at depth 2 captured ──
+  var hasNestedContent = output.indexOf('NESTED_UNIQUE') !== -1;
+  addResult(
+    'Nested iframe at depth 2 captured',
+    hasNestedContent && markers.indexOf('iframe#nested-frame') !== -1,
+    'Content: ' + hasNestedContent + ', Marker: ' + (markers.indexOf('iframe#nested-frame') !== -1)
+  );
+
+  // ── Test 10: Deep nested iframe at depth 3 captured ──
+  var hasDeepContent = output.indexOf('DEEP_UNIQUE') !== -1;
+  addResult(
+    'Deep nested iframe at depth 3 captured',
+    hasDeepContent && markers.indexOf('iframe#deep-nested') !== -1,
+    'Content: ' + hasDeepContent + ', Marker: ' + (markers.indexOf('iframe#deep-nested') !== -1)
+  );
+
+  // ── Test 11: IFRAME markers are in depth order ──
+  var depth1Idx = output.indexOf('depth=1]');
+  var depth2Idx = output.indexOf('depth=2]');
+  var depth3Idx = output.indexOf('depth=3]');
+  addResult(
+    'IFRAME markers appear in depth order (1, 2, 3)',
+    depth1Idx > 0 && depth2Idx > depth1Idx && depth3Idx > depth2Idx,
+    'Positions: depth=1 at ' + depth1Idx + ', depth=2 at ' + depth2Idx + ', depth=3 at ' + depth3Idx
+  );
+
+  // ── Test 12: MAX_DEPTH=3 enforced ──
+  addResult(
+    'MAX_DEPTH=3 enforced (no depth 4 content)',
+    output.indexOf('depth=4]') === -1 && output.indexOf('SHOULD_NOT_APPEAR') === -1,
+    'depth=4: ' + (output.indexOf('depth=4]') === -1 ? 'absent' : 'PRESENT') +
+    ', depth-4 content: ' + (output.indexOf('SHOULD_NOT_APPEAR') === -1 ? 'absent' : 'PRESENT')
+  );
+
+  // ── Test 13: Parent frame content also present ──
+  addResult(
+    'Parent frame DOM included alongside nested children',
+    output.indexOf('PARENT_UNIQUE') !== -1,
+    'Parent frame unique marker found.'
+  );
+
+  // ── Test 14: Correct IFRAME marker count ──
+  addResult(
+    'Expected 5 IFRAME markers: frame1, frame2_(nth), parent, nested, deep-nested',
+    markers.length === 5,
+    'Found ' + markers.length + ' markers: [' + markers.join(', ') + ']'
+  );
+
+  // Show full output for manual inspection
+  var pre = document.createElement('pre');
+  pre.textContent = output;
+  results.appendChild(document.createElement('h3')).textContent = 'Raw Extraction Output:';
+  results.appendChild(pre);
+
+  var summaryPass = results.querySelectorAll('.pass').length;
+  var summaryFail = results.querySelectorAll('.fail').length;
+  var summary = document.createElement('div');
+  summary.className = 'info';
+  summary.innerHTML = '<strong>Summary:</strong> ' + summaryPass + ' passed, ' + summaryFail + ' failed of ' +
+    (summaryPass + summaryFail) + ' tests. ' +
+    (summaryFail === 0 ? 'ALL TESTS PASSED.' : 'SOME TESTS FAILED — review above.');
+  results.insertBefore(summary, results.firstChild);
+}
+
+window.addEventListener('load', function() {
+  setTimeout(runTests, 2000);
+});
+</script>
+
+</body>
+</html>
