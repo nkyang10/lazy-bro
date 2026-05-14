@@ -1,5 +1,7 @@
 # Lazy Browser
 
+> free your mind, free your click, lazy browsing
+
 AI-powered Chrome extension that reads web pages, clicks through links, and finds answers — so you don't have to.
 
 ## Features
@@ -16,7 +18,7 @@ AI-powered Chrome extension that reads web pages, clicks through links, and find
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/your-username/lazy-browser.git
+   git clone https://github.com/nkyang10/lazy-bro.git
    ```
 2. Open `chrome://extensions` in Chrome
 3. Enable **"Developer mode"** (toggle in the top-right corner)
