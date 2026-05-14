@@ -73,6 +73,7 @@ class SettingsPanel {
           <button id="exportBtn" class="action-btn">Export</button>
           <button id="importBtn" class="action-btn">Import</button>
           <input type="file" id="importFile" accept=".json" style="display:none" />
+          <p class="help-text">Your API key is included in the export file as plaintext. Keep the exported JSON secure.</p>
         </div>
       </div>
     `;
@@ -125,6 +126,9 @@ class SettingsPanel {
 
   // Download current settings as a JSON file.
   exportSettings() {
+    if (!confirm('Warning: Your API key will be saved in plaintext inside the exported JSON file. Keep this file secure and delete it after importing. Continue?')) {
+      return;
+    }
     const data = {
       apiUrl: Config.apiUrl,
       apiKey: Config.apiKey,
