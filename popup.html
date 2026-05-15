@@ -76,6 +76,41 @@
       font-family: inherit;
     }
     .form-group input:focus, .form-group select:focus { outline: none; border-color: #10a37f; }
+    /* URL + Connect button row */
+    .url-row { display: flex; gap: 6px; }
+    .url-row input { flex: 1; }
+    .fetch-btn {
+      padding: 6px 12px;
+      background: #10a37f;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .fetch-btn:hover { background: #0d8a6a; }
+    .fetch-btn:disabled { background: #ccc; cursor: not-allowed; }
+    /* Model section (hidden by default) */
+    .model-section { margin-bottom: 10px; }
+    .custom-model-row { margin-top: 6px; }
+    .custom-model-row input {
+      width: 100%;
+      padding: 5px 10px;
+      font-size: 12px;
+      border: 1px dashed #d0d0d0;
+      border-radius: 6px;
+      font-family: inherit;
+    }
+    .custom-model-row input:focus { outline: none; border-color: #10a37f; border-style: solid; }
+    /* Model fetch status messages */
+    .model-status { font-size: 11px; padding: 6px 8px; margin-bottom: 8px; border-radius: 4px; }
+    .model-status-loading { background: #f0f7ff; color: #1a73e8; }
+    .model-status-error { background: #fff0f0; color: #c33; }
+    /* Required/optional label badges */
+    .required { color: #e53e3e; font-weight: 700; }
+    .optional { color: #999; font-weight: 400; font-size: 10px; }
     .save-btn {
       width: 100%;
       padding: 8px;

@@ -441,11 +441,41 @@ async function processChatRequest(input) {
   }
 }
 
+// Fetch available models from an OpenAI-compatible /models endpoint.
+async function fetchModels(apiUrl, apiKey) {
+  const url = `${apiUrl}/models`;
+  const headers = { 'Content-Type': 'application/json' };
+  if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
+  try {
+    const resp = await fetch(url, { headers, signal: controller.signal });
+    clearTimeout(timeoutId);
+    if (!resp.ok) {
+      const errText = await resp.text();
+      throw new Error(`${resp.status} ${resp.statusText}: ${errText}`);
+    }
+    const data = await resp.json();
+    const models = (data.data || [])
+      .map(m => m.id || m.name || m.model || '')
+      .filter(id => id && typeof id === 'string')
+      .sort();
+    return { success: true, models };
+  } catch (e) {
+    clearTimeout(timeoutId);
+    return { success: false, error: e.message };
+  }
+}
+
 // Listen for chat messages from the popup.
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'chat') {
     processChatRequest(message.input);
     sendResponse({ accepted: true });
+  }
+  if (message.type === 'fetchModels') {
+    fetchModels(message.apiUrl, message.apiKey).then(sendResponse);
+    return true;
   }
   return true;
 });

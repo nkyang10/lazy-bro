@@ -1,11 +1,12 @@
-// Settings panel rendered inside #settingsPanel in popup.html.
-// Manages API endpoint, key, model, and experimental multi-click options.
-// Supports Export/Import to persist settings across extension reinstalls.
+// Settings panel rendered inside #settingsPanel in popup.html / sidebar.html.
+// Workflow: enter API URL → Connect → fetch model list → select model → save.
+// API key is optional. Model dropdown is hidden until models are fetched.
 
 class SettingsPanel {
   constructor(containerId) {
     this.container = document.getElementById(containerId);
     this.isVisible = false;
+    this.fetchedModels = [];
   }
 
   // Inject the settings form HTML and bind events.
@@ -15,44 +16,29 @@ class SettingsPanel {
         <h3>Settings</h3>
         <form id="settingsForm">
           <div class="form-group">
-            <label for="apiUrl">API Endpoint URL</label>
-            <input type="text" id="apiUrl" placeholder="https://api.openai.com/v1" />
+            <label for="apiUrl">API Endpoint URL <span class="required">*</span></label>
+            <div class="url-row">
+              <input type="text" id="apiUrl" placeholder="https://api.openai.com/v1" />
+              <button type="button" id="fetchModelsBtn" class="fetch-btn">Connect</button>
+            </div>
+            <p class="help-text">Enter your OpenAI-compatible API base URL, then click Connect to retrieve available models.</p>
           </div>
+
           <div class="form-group">
-            <label for="apiKey">API Key</label>
-            <input type="password" id="apiKey" placeholder="Enter your API key" />
+            <label for="apiKey">API Key <span class="optional">(optional)</span></label>
+            <input type="password" id="apiKey" placeholder="Enter your API key (optional)" />
           </div>
-          <div class="form-group">
+
+          <div id="modelSection" class="form-group model-section" style="display:none">
             <label for="modelSelect">Model</label>
-            <select id="modelSelect">
-              <optgroup label="OpenAI">
-                <option value="gpt-5.5">GPT-5.5</option>
-                <option value="gpt-5.5-pro">GPT-5.5 Pro</option>
-                <option value="gpt-5.4">GPT-5.4</option>
-                <option value="gpt-5.4-pro">GPT-5.4 Pro</option>
-                <option value="gpt-5.4-mini">GPT-5.4 Mini</option>
-                <option value="gpt-5.4-nano">GPT-5.4 Nano</option>
-                <option value="gpt-5-mini">GPT-5 Mini</option>
-                <option value="gpt-5-nano">GPT-5 Nano</option>
-                <option value="chat-latest">ChatGPT Latest</option>
-              </optgroup>
-              <optgroup label="MiniMax">
-                <option value="MiniMax-M2.7">MiniMax M2.7</option>
-                <option value="MiniMax-M2.5">MiniMax M2.5</option>
-                <option value="MiniMax-M2.5-lightning">MiniMax M2.5 Lightning</option>
-                <option value="MiniMax-M2.1">MiniMax M2.1</option>
-                <option value="MiniMax-M2.1-lightning">MiniMax M2.1 Lightning</option>
-              </optgroup>
-              <optgroup label="DeepSeek">
-                <option value="deepseek-v4-pro">DeepSeek V4 Pro</option>
-                <option value="deepseek-v4-flash">DeepSeek V4 Flash</option>
-                <option value="deepseek-chat">DeepSeek Chat (legacy)</option>
-                <option value="deepseek-reasoner">DeepSeek Reasoner (legacy)</option>
-                <option value="deepseek-r1">DeepSeek R1</option>
-                <option value="deepseek-coder">DeepSeek Coder</option>
-              </optgroup>
-            </select>
+            <select id="modelSelect"></select>
+            <div class="custom-model-row">
+              <input type="text" id="customModel" placeholder="Or type a custom model name..." />
+            </div>
           </div>
+
+          <div id="modelStatus" class="model-status" style="display:none"></div>
+
           <div class="settings-section">
             <h4>Experimental</h4>
             <div class="form-group checkbox-group">
@@ -83,14 +69,104 @@ class SettingsPanel {
       this.saveSettings();
     });
 
+    document.getElementById('fetchModelsBtn').addEventListener('click', () => this.fetchAndPopulateModels());
+
     document.getElementById('exportBtn').addEventListener('click', () => this.exportSettings());
     document.getElementById('importBtn').addEventListener('click', () => {
       document.getElementById('importFile').click();
     });
     document.getElementById('importFile').addEventListener('change', (e) => this.importSettings(e));
 
+    // Allow choosing between dropdown and custom input.
+    const modelSelect = document.getElementById('modelSelect');
+    const customModel = document.getElementById('customModel');
+    if (modelSelect && customModel) {
+      modelSelect.addEventListener('change', () => {
+        if (modelSelect.value !== '__custom__') customModel.value = '';
+      });
+      customModel.addEventListener('input', () => {
+        if (customModel.value.trim()) modelSelect.value = '__custom__';
+      });
+    }
+
     // Populate form fields from saved config.
     this.loadSettings();
+  }
+
+  // Fetch models from the OpenAI-compatible /models endpoint via background service worker.
+  async fetchAndPopulateModels() {
+    const apiUrl = document.getElementById('apiUrl').value.trim();
+    const apiKey = document.getElementById('apiKey').value.trim();
+
+    if (!apiUrl) {
+      alert('Please enter an API Endpoint URL first.');
+      return;
+    }
+
+    const fetchBtn = document.getElementById('fetchModelsBtn');
+    const modelSection = document.getElementById('modelSection');
+    const modelStatus = document.getElementById('modelStatus');
+    const modelSelect = document.getElementById('modelSelect');
+
+    fetchBtn.disabled = true;
+    fetchBtn.textContent = '...';
+    modelStatus.style.display = 'block';
+    modelStatus.className = 'model-status model-status-loading';
+    modelStatus.textContent = 'Fetching models...';
+
+    try {
+      const result = await new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage({ type: 'fetchModels', apiUrl, apiKey }, (response) => {
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message));
+            return;
+          }
+          resolve(response);
+        });
+      });
+
+      if (result.success) {
+        this.fetchedModels = result.models;
+        modelSelect.innerHTML = '';
+        for (const m of this.fetchedModels) {
+          const option = document.createElement('option');
+          option.value = m;
+          option.textContent = m;
+          modelSelect.appendChild(option);
+        }
+        const customOption = document.createElement('option');
+        customOption.value = '__custom__';
+        customOption.textContent = 'Custom model...';
+        modelSelect.appendChild(customOption);
+
+        // Restore previously saved model if it's in the list.
+        if (Config.model && this.fetchedModels.includes(Config.model)) {
+          modelSelect.value = Config.model;
+        } else if (Config.model) {
+          modelSelect.value = '__custom__';
+          document.getElementById('customModel').value = Config.model;
+        }
+
+        modelSection.style.display = 'block';
+        modelStatus.style.display = 'none';
+      } else {
+        modelStatus.className = 'model-status model-status-error';
+        modelStatus.textContent = `Failed to fetch models: ${result.error}. You can still type a custom model name below.`;
+        // Show model section with custom input only.
+        modelSelect.innerHTML = '<option value="__custom__">Custom model...</option>';
+        if (Config.model) document.getElementById('customModel').value = Config.model;
+        modelSection.style.display = 'block';
+      }
+    } catch (e) {
+      modelStatus.className = 'model-status model-status-error';
+      modelStatus.textContent = `Connection error: ${e.message}. You can still type a custom model name.`;
+      modelSelect.innerHTML = '<option value="__custom__">Custom model...</option>';
+      if (Config.model) document.getElementById('customModel').value = Config.model;
+      modelSection.style.display = 'block';
+    } finally {
+      fetchBtn.disabled = false;
+      fetchBtn.textContent = 'Connect';
+    }
   }
 
   // On popup open: load saved values from chrome.storage into the form.
@@ -98,7 +174,20 @@ class SettingsPanel {
     await Config.loadConfig();
     document.getElementById('apiUrl').value = Config.apiUrl || '';
     document.getElementById('apiKey').value = Config.apiKey || '';
-    document.getElementById('modelSelect').value = Config.model || 'gpt-5.5';
+
+    const modelSection = document.getElementById('modelSection');
+    const modelSelect = document.getElementById('modelSelect');
+    const customModel = document.getElementById('customModel');
+
+    // If a model was previously saved and an API URL is set, show the model section with custom input.
+    if (Config.apiUrl) {
+      modelSelect.innerHTML = '<option value="__custom__">Custom model...</option>';
+      if (Config.model) {
+        customModel.value = Config.model;
+      }
+      modelSection.style.display = 'block';
+    }
+
     document.getElementById('multiClickEnabled').checked = Config.multiClickEnabled || false;
     document.getElementById('maxClicks').value = Config.maxClicks || 5;
   }
@@ -109,9 +198,19 @@ class SettingsPanel {
     const apiKey = document.getElementById('apiKey').value.trim();
 
     if (!apiUrl) { alert('API Endpoint URL is required'); return; }
-    if (!apiKey) { alert('API Key is required'); return; }
 
-    const model = document.getElementById('modelSelect').value;
+    const modelSelect = document.getElementById('modelSelect');
+    const customModel = document.getElementById('customModel');
+
+    let model = '';
+    if (modelSelect && modelSelect.value === '__custom__') {
+      model = (customModel && customModel.value.trim()) || '';
+    } else if (modelSelect) {
+      model = modelSelect.value;
+    }
+
+    if (!model) { alert('Please select or enter a model'); return; }
+
     const multiClickEnabled = document.getElementById('multiClickEnabled').checked;
     const maxClicks = parseInt(document.getElementById('maxClicks').value, 10) || 5;
 
@@ -164,9 +263,19 @@ class SettingsPanel {
         await Config.saveConfig();
         document.getElementById('apiUrl').value = Config.apiUrl;
         document.getElementById('apiKey').value = Config.apiKey;
-        document.getElementById('modelSelect').value = Config.model;
         document.getElementById('multiClickEnabled').checked = Config.multiClickEnabled;
         document.getElementById('maxClicks').value = Config.maxClicks;
+
+        // Show model section with imported model.
+        const modelSection = document.getElementById('modelSection');
+        const modelSelect = document.getElementById('modelSelect');
+        const customModel = document.getElementById('customModel');
+        if (Config.model) {
+          modelSelect.innerHTML = '<option value="__custom__">Custom model...</option>';
+          customModel.value = Config.model;
+          modelSection.style.display = 'block';
+        }
+
         alert('Settings imported successfully');
       } catch (err) {
         alert('Invalid settings file: ' + err.message);
