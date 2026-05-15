@@ -29,6 +29,12 @@ class SettingsPanel {
             <input type="password" id="apiKey" placeholder="Enter your API key (optional)" />
           </div>
 
+          <div class="form-group">
+            <label for="timeout">Request Timeout (seconds)</label>
+            <input type="number" id="timeout" min="1" max="600" value="180" placeholder="180" />
+            <p class="help-text">Maximum wait time for LLM responses (default: 180s)</p>
+          </div>
+
           <div id="modelSection" class="form-group model-section" style="display:none">
             <label for="modelSelect">Model</label>
             <select id="modelSelect"></select>
@@ -188,6 +194,7 @@ class SettingsPanel {
       modelSection.style.display = 'block';
     }
 
+    document.getElementById('timeout').value = (Config.timeout || 180000) / 1000;
     document.getElementById('multiClickEnabled').checked = Config.multiClickEnabled || false;
     document.getElementById('maxClicks').value = Config.maxClicks || 5;
   }
@@ -211,12 +218,14 @@ class SettingsPanel {
 
     if (!model) { alert('Please select or enter a model'); return; }
 
+    const timeoutSeconds = parseInt(document.getElementById('timeout').value, 10) || 180;
     const multiClickEnabled = document.getElementById('multiClickEnabled').checked;
     const maxClicks = parseInt(document.getElementById('maxClicks').value, 10) || 5;
 
     Config.apiUrl = apiUrl;
     Config.apiKey = apiKey;
     Config.model = model;
+    Config.timeout = timeoutSeconds * 1000;
     Config.multiClickEnabled = multiClickEnabled;
     Config.maxClicks = maxClicks;
     await Config.saveConfig();
@@ -263,6 +272,7 @@ class SettingsPanel {
         await Config.saveConfig();
         document.getElementById('apiUrl').value = Config.apiUrl;
         document.getElementById('apiKey').value = Config.apiKey;
+        document.getElementById('timeout').value = (Config.timeout || 180000) / 1000;
         document.getElementById('multiClickEnabled').checked = Config.multiClickEnabled;
         document.getElementById('maxClicks').value = Config.maxClicks;
 

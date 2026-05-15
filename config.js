@@ -6,7 +6,7 @@ const Config = {
   apiUrl: '',
   apiKey: '',
   model: '',
-  timeout: 30000,
+  timeout: 180000,
   multiClickEnabled: false,
   maxClicks: 5,
 
