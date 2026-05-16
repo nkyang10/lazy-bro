@@ -141,19 +141,6 @@ async function getPageHTML() {
   });
 }
 
-// Grab any user-selected text on the active tab.
-async function getSelectedText() {
-  return new Promise((resolve) => {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (!tabs[0] || tabs[0].url?.startsWith('chrome://')) { resolve(''); return; }
-      chrome.scripting.executeScript(
-        { target: { tabId: tabs[0].id }, func: () => window.getSelection().toString() },
-        (results) => resolve(results?.[0]?.result || '')
-      );
-    });
-  });
-}
-
 // Inject a click action into the active tab's MAIN world.
 // Use MAIN (not ISOLATED) so the LLM's code can touch page-level variables.
 // Supports optional frameSelector to target same-origin iframes.
@@ -369,10 +356,7 @@ async function processChatRequest(input) {
 
     updateStatus('processing', { chatProgress: 'Fetching page context...' });
     let pageContent = await getPageHTML();
-    const selectedText = await getSelectedText();
-
-    // userQuestion never contains DOM — DOM is in a separate system message.
-    const userQuestion = `User Input: ${input}${selectedText ? '\n\nSelected Text: ' + selectedText : ''}`;
+    const userQuestion = `User Input: ${input}`;
     let messages = [
       { role: 'system', content: SystemPrompt.base },
       { role: 'user', content: userQuestion },
@@ -410,6 +394,10 @@ async function processChatRequest(input) {
       const hasAnyClick = clickActions.length > 0 || finalClicks.length > 0;
 
       if (multiClick && hasAnyClick && clickCount < maxClicks && !isFinalAction) {
+        // Publish the intermediate summary before executing actions
+        // so the user sees the LLM's explanation in the right order.
+        updateStatus('processing', { chatStepSummary: finalSummary });
+
         // Prioritize final-clicks over non-final.
         const clicksToRun = finalClicks.length > 0 ? finalClicks : clickActions;
         if (finalClicks.length > 0) isFinalAction = true;
@@ -425,7 +413,8 @@ async function processChatRequest(input) {
           pageContent = await getPageHTML();
 
           // Rebuild messages with fresh DOM. Only keep system prompt + user question + current DOM.
-          const summary = `Clicked: ${clickAction.label}. ${clickAction.final ? 'This is the final page — answer now.' : 'Continue finding the answer. Clicks used: ${clickCount}/${maxClicks}.'}`;
+          const progressNote = `Continue finding the answer. Clicks used: ${clickCount}/${maxClicks}.`;
+          const summary = `Clicked: ${clickAction.label}. ${clickAction.final ? 'This is the final page — answer now.' : progressNote}`;
           messages = [
             { role: 'system', content: SystemPrompt.base },
             { role: 'user', content: userQuestion },
@@ -449,18 +438,13 @@ async function processChatRequest(input) {
           if (finalParsed && finalParsed.summary) {
             finalSummary = finalParsed.summary;
             finalActions = finalParsed.actions || [];
-          }
-        } else {
-          // Non-final click: call LLM again with the new page, loop continues.
-          result = await callLLM(messages);
-          rawContent = result.content;
-          if (result.reasoning) {
-            updateStatus('processing', { chatProgress: 'Processing...', chatReasoning: result.reasoning });
+            updateStatus('processing', { chatStepSummary: finalSummary });
           }
         }
+        // Non-final click: continue loop to make a fresh LLM call
+        // with the rebuilt messages on the new page.
+        if (!isFinalAction) continue;
       }
-      // Exit the while loop — if isFinalAction is still false, the next
-      // iteration will make a fresh LLM call and re-evaluate.
       break;
     }
 

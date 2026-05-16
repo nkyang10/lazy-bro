@@ -5,6 +5,7 @@
 let isActive = false;
 let settingsPanel;
 let isWaitingForResponse = false;
+let lastDisplayedContent = '';
 const toggleBtn = document.getElementById('toggleBtn');
 const sendBtn = document.getElementById('sendBtn');
 const userInput = document.getElementById('userInput');
@@ -173,14 +174,34 @@ function handleStorageChange(changes) {
   if (changes.chatReason && changes.chatReason.newValue) {
     showReason(changes.chatReason.newValue);
   }
+  if (changes.chatStepSummary && changes.chatStepSummary.newValue) {
+    const content = changes.chatStepSummary.newValue;
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'message assistant-message';
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'message-content';
+    contentDiv.innerHTML = renderMarkdown(content);
+    messageDiv.appendChild(contentDiv);
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'copy-btn';
+    copyBtn.textContent = 'Copy';
+    copyBtn.addEventListener('click', () => copyToClipboard(content));
+    messageDiv.appendChild(copyBtn);
+    appendBeforeTyping(messageDiv);
+    lastDisplayedContent = content;
+    chrome.storage.local.set({ chatStepSummary: null });
+  }
   if (changes.chatResult && changes.chatResult.newValue) {
     hideTypingIndicator();
     hideStatus();
     isWaitingForResponse = false;
     sendBtn.disabled = false;
-    displayMessage('assistant', changes.chatResult.newValue, new Date().toISOString());
-    messageHistory.saveMessage('assistant', changes.chatResult.newValue);
-    // Reset storage so re-open doesn't re-display.
+    const content = changes.chatResult.newValue;
+    if (content !== lastDisplayedContent) {
+      displayMessage('assistant', content, new Date().toISOString());
+    }
+    messageHistory.saveMessage('assistant', content);
+    lastDisplayedContent = '';
     chrome.storage.local.set({ chatStatus: 'idle', chatProgress: null, chatResult: null, chatReasoning: null, chatReason: null });
   }
   if (changes.chatError && changes.chatError.newValue) {
@@ -196,7 +217,12 @@ function handleStorageChange(changes) {
 // Called on popup open. Restores in-flight or completed results
 // if the background is still processing or finished while popup was closed.
 async function loadPendingResult() {
-  const { chatStatus, chatResult, chatProgress, chatError } = await chrome.storage.local.get(['chatStatus', 'chatResult', 'chatProgress', 'chatError']);
+  const { chatStatus, chatResult, chatProgress, chatError, chatStepSummary } = await chrome.storage.local.get(['chatStatus', 'chatResult', 'chatProgress', 'chatError', 'chatStepSummary']);
+  if (chatStepSummary) {
+    displayMessage('assistant', chatStepSummary, new Date().toISOString());
+    lastDisplayedContent = chatStepSummary;
+    chrome.storage.local.set({ chatStepSummary: null });
+  }
   if (chatStatus === 'processing' && chatProgress) {
     showTypingIndicator();
     isWaitingForResponse = true;
@@ -204,8 +230,11 @@ async function loadPendingResult() {
     showStatus(chatProgress);
   }
   if (chatStatus === 'done' && chatResult) {
-    displayMessage('assistant', chatResult, new Date().toISOString());
+    if (chatResult !== lastDisplayedContent) {
+      displayMessage('assistant', chatResult, new Date().toISOString());
+    }
     await messageHistory.saveMessage('assistant', chatResult);
+    lastDisplayedContent = '';
     chrome.storage.local.set({ chatStatus: 'idle', chatResult: null, chatProgress: null });
   }
   if (chatStatus === 'error' && chatError) {
@@ -252,6 +281,7 @@ async function loadHistory() {
 async function clearChat() {
   await messageHistory.clearHistory();
   chatContainer.innerHTML = '';
+  lastDisplayedContent = '';
 }
 
 // --- Event bindings ---
