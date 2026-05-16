@@ -49,6 +49,13 @@ class SettingsPanel {
             <h4>Experimental</h4>
             <div class="form-group checkbox-group">
               <label>
+                <input type="checkbox" id="thinkingEnabled" checked />
+                Enable LLM thinking/reasoning
+              </label>
+              <p class="help-text">When enabled, the model will use chain-of-thought reasoning before responding (supported by DeepSeek R1/V4 and similar models)</p>
+            </div>
+            <div class="form-group checkbox-group">
+              <label>
                 <input type="checkbox" id="multiClickEnabled" />
                 Enable multi-click navigation
               </label>
@@ -195,6 +202,7 @@ class SettingsPanel {
     }
 
     document.getElementById('timeout').value = (Config.timeout || 180000) / 1000;
+    document.getElementById('thinkingEnabled').checked = Config.thinkingEnabled !== false;
     document.getElementById('multiClickEnabled').checked = Config.multiClickEnabled || false;
     document.getElementById('maxClicks').value = Config.maxClicks || 5;
   }
@@ -219,6 +227,7 @@ class SettingsPanel {
     if (!model) { alert('Please select or enter a model'); return; }
 
     const timeoutSeconds = parseInt(document.getElementById('timeout').value, 10) || 180;
+    const thinkingEnabled = document.getElementById('thinkingEnabled').checked;
     const multiClickEnabled = document.getElementById('multiClickEnabled').checked;
     const maxClicks = parseInt(document.getElementById('maxClicks').value, 10) || 5;
 
@@ -226,6 +235,7 @@ class SettingsPanel {
     Config.apiKey = apiKey;
     Config.model = model;
     Config.timeout = timeoutSeconds * 1000;
+    Config.thinkingEnabled = thinkingEnabled;
     Config.multiClickEnabled = multiClickEnabled;
     Config.maxClicks = maxClicks;
     await Config.saveConfig();
@@ -242,6 +252,7 @@ class SettingsPanel {
       apiKey: Config.apiKey,
       model: Config.model,
       timeout: Config.timeout,
+      thinkingEnabled: Config.thinkingEnabled,
       multiClickEnabled: Config.multiClickEnabled,
       maxClicks: Config.maxClicks
     };
@@ -267,12 +278,14 @@ class SettingsPanel {
         Config.apiKey = data.apiKey || Config.apiKey;
         Config.model = data.model || Config.model;
         Config.timeout = data.timeout || Config.timeout;
+        Config.thinkingEnabled = data.thinkingEnabled !== undefined ? data.thinkingEnabled : true;
         Config.multiClickEnabled = data.multiClickEnabled || false;
         Config.maxClicks = data.maxClicks || 5;
         await Config.saveConfig();
         document.getElementById('apiUrl').value = Config.apiUrl;
         document.getElementById('apiKey').value = Config.apiKey;
         document.getElementById('timeout').value = (Config.timeout || 180000) / 1000;
+        document.getElementById('thinkingEnabled').checked = Config.thinkingEnabled !== false;
         document.getElementById('multiClickEnabled').checked = Config.multiClickEnabled;
         document.getElementById('maxClicks').value = Config.maxClicks;
 

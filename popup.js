@@ -50,6 +50,16 @@ function showTypingIndicator() {
   chatContainer.scrollTop = chatContainer.scrollHeight;
 }
 
+function appendBeforeTyping(el) {
+  const typing = document.getElementById('typingIndicator');
+  if (typing) {
+    chatContainer.insertBefore(el, typing);
+  } else {
+    chatContainer.appendChild(el);
+  }
+  chatContainer.scrollTop = chatContainer.scrollHeight;
+}
+
 function hideTypingIndicator() {
   const indicator = document.getElementById('typingIndicator');
   if (indicator) indicator.remove();
@@ -115,8 +125,7 @@ function showStatus(text) {
   statusDiv.className = 'message assistant-message';
   statusDiv.style.cssText = 'font-size:11px;color:#888;align-self:center;padding:6px 12px;border-radius:16px;';
   statusDiv.textContent = text;
-  chatContainer.appendChild(statusDiv);
-  chatContainer.scrollTop = chatContainer.scrollHeight;
+  appendBeforeTyping(statusDiv);
 }
 
 function hideStatus() {
@@ -131,8 +140,7 @@ function showReason(text) {
   div.className = 'message assistant-message';
   div.style.cssText = 'font-size:11px;color:#888;align-self:center;padding:4px 10px;border-radius:12px;font-style:italic;max-width:90%;';
   div.textContent = text;
-  chatContainer.appendChild(div);
-  chatContainer.scrollTop = chatContainer.scrollHeight;
+  appendBeforeTyping(div);
 }
 
 // Collapsible reasoning/chain-of-thought from the LLM (truncated at 500 chars).
@@ -151,10 +159,8 @@ function displayReasoning(text) {
   } else {
     div.innerHTML = `<details><summary style="cursor:pointer;color:#888;font-weight:500;">Reasoning</summary><div style="margin-top:6px;color:#999;white-space:pre-wrap;">${previewText}</div></details>`;
   }
-  chatContainer.appendChild(div);
-  chatContainer.scrollTop = chatContainer.scrollHeight;
+  appendBeforeTyping(div);
 }
-
 // chrome.storage.onChanged handler — renders real-time progress from background.js.
 // Fires whenever the background updates chatStatus, chatProgress, chatResult, etc.
 function handleStorageChange(changes) {

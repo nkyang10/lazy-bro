@@ -74,6 +74,24 @@ async function getPageHTML() {
               return parts.join(',');
             }
 
+            function stripUnwantedElements(clone) {
+              clone.querySelectorAll('script').forEach(el => el.remove());
+              clone.querySelectorAll('img').forEach(img => {
+                const src = (img.getAttribute('src') || '').toLowerCase();
+                if (src.startsWith('data:image/') || src.includes('.svg'))
+                  img.remove();
+              });
+              clone.querySelectorAll('svg').forEach(el => el.remove());
+            }
+
+            function getCleanedBodyHTML(doc) {
+              const body = doc.body;
+              if (!body) return '';
+              const clone = body.cloneNode(true);
+              stripUnwantedElements(clone);
+              return clone.outerHTML.replace(/\s+/g, ' ').trim();
+            }
+
             function collectIframeDOMs(doc, depth) {
               let result = '';
               if (depth >= MAX_DEPTH) return result;
@@ -95,7 +113,7 @@ async function getPageHTML() {
 
                 let iframeHTML;
                 try {
-                  iframeHTML = iframeDoc.documentElement.outerHTML;
+                  iframeHTML = getCleanedBodyHTML(iframeDoc);
                 } catch (_e) {
                   continue;
                 }
@@ -114,7 +132,7 @@ async function getPageHTML() {
               return result;
             }
 
-            return document.documentElement.outerHTML + collectIframeDOMs(document, 0);
+            return getCleanedBodyHTML(document) + collectIframeDOMs(document, 0);
           }
         },
         (results) => resolve(results?.[0]?.result || '')
@@ -279,16 +297,18 @@ async function callLLM(messages) {
   const timeoutId = setTimeout(() => controller.abort(), Config.timeout);
   try {
     const url = `${Config.apiUrl}/chat/completions`;
+    const body = {
+      model: Config.model || 'gpt-5.5',
+      messages: messages,
+      thinking: { type: Config.thinkingEnabled !== false ? 'enabled' : 'disabled' }
+    };
     const resp = await fetch(url, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${Config.apiKey}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({
-        model: Config.model || 'gpt-5.5',
-        messages: messages
-      }),
+      body: JSON.stringify(body),
       signal: controller.signal
     });
     clearTimeout(timeoutId);

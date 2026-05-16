@@ -7,6 +7,7 @@ const Config = {
   apiKey: '',
   model: '',
   timeout: 180000,
+  thinkingEnabled: true,
   multiClickEnabled: false,
   maxClicks: 5,
 
@@ -14,13 +15,14 @@ const Config = {
   async loadConfig() {
     try {
       const result = await chrome.storage.local.get([
-        'apiUrl', 'apiKey', 'model', 'timeout', 'multiClickEnabled', 'maxClicks'
+        'apiUrl', 'apiKey', 'model', 'timeout', 'thinkingEnabled', 'multiClickEnabled', 'maxClicks'
       ]);
       console.log('Config loaded from storage:', result);
       if (result.apiUrl) this.apiUrl = result.apiUrl;
       if (result.apiKey) this.apiKey = result.apiKey;
       if (result.model) this.model = result.model;
       if (result.timeout) this.timeout = result.timeout;
+      if (result.thinkingEnabled !== undefined) this.thinkingEnabled = result.thinkingEnabled;
       if (result.multiClickEnabled !== undefined) this.multiClickEnabled = result.multiClickEnabled;
       if (result.maxClicks !== undefined) this.maxClicks = result.maxClicks;
     } catch (e) {
@@ -37,10 +39,11 @@ const Config = {
         apiKey: this.apiKey,
         model: this.model,
         timeout: this.timeout,
+        thinkingEnabled: this.thinkingEnabled,
         multiClickEnabled: this.multiClickEnabled,
         maxClicks: this.maxClicks
       });
-      console.log('Config saved:', { apiUrl: this.apiUrl, model: this.model, multiClickEnabled: this.multiClickEnabled, maxClicks: this.maxClicks });
+      console.log('Config saved:', { apiUrl: this.apiUrl, model: this.model, thinkingEnabled: this.thinkingEnabled, multiClickEnabled: this.multiClickEnabled, maxClicks: this.maxClicks });
     } catch (e) {
       console.error('Failed to save config:', e);
       throw e;
