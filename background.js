@@ -164,7 +164,27 @@ async function executeClickAction(action) {
       chrome.scripting.executeScript({
         target: { tabId: tabs[0].id },
         world: 'MAIN',
-        func: (code, frameSelector) => {
+        func: (code, frameSelector, fallbackUrl, fallbackTimeout) => {
+          const FallbackTimeout = fallbackTimeout || 2000;
+
+          function doClickAndFallback(win, c, fbUrl) {
+            let currentUrl = null;
+            try { currentUrl = win.location.href; } catch (_) {}
+
+            try { win.eval(c); } catch (e) { console.error(e); }
+
+            if (fbUrl) {
+              win.setTimeout(() => {
+                try {
+                  const nowUrl = win.location.href;
+                  if (nowUrl === currentUrl) {
+                    win.location.href = fbUrl;
+                  }
+                } catch (e) { console.error('Fallback navigation error:', e); }
+              }, FallbackTimeout);
+            }
+          }
+
           if (frameSelector) {
             const iframe = document.querySelector(frameSelector);
             if (!iframe) {
@@ -177,15 +197,15 @@ async function executeClickAction(action) {
                 console.warn('executeClickAction: cross-origin iframe, cannot access:', frameSelector);
                 return;
               }
-              win.eval(code);
+              doClickAndFallback(win, code, fallbackUrl);
             } catch (e) {
               console.error('executeClickAction: iframe error:', e);
             }
           } else {
-            try { eval(code); } catch (e) { console.error(e); }
+            doClickAndFallback(window, code, fallbackUrl);
           }
         },
-        args: [action.action, action.frameSelector || null]
+        args: [action.action, action.frameSelector || null, action.fallbackUrl || null, 2000]
       }, () => {
         if (chrome.runtime.lastError) console.error('Click error:', chrome.runtime.lastError);
         resolve();

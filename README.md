@@ -7,7 +7,7 @@ AI-powered Chrome extension that reads web pages, clicks through links, and find
 ## Features
 
 - **AI chat interface** via the extension popup — ask questions and get answers powered by LLMs
-- **Multi-click navigation** — the LLM analyzes the page DOM and clicks through links to find answers, handling complex multi-page research automatically
+- **Multi-click navigation** — the LLM analyzes the page DOM and clicks through links to find answers, handling complex multi-page research automatically. Failed clicks fall back to direct URL navigation after a 2000ms timeout.
 - **Customizable API** — works with OpenAI, DeepSeek, MiniMax, and any compatible API endpoint; bring your own endpoint, model, and API key
 - **Settings export/import** — back up your configuration or share it across devices with JSON export/import
 - **Chat history persistence** — conversations are saved locally and persist across browser sessions
@@ -40,7 +40,7 @@ This produces `dist/lazy-bro.zip` — ready for Chrome Web Store upload or sidel
 
 ```
 ├── manifest.json          # Chrome Extension manifest (Manifest V3)
-├── background.js          # Service worker — handles LLM API calls
+├── background.js          # Service worker — handles LLM API calls, click actions, and navigation fallback
 ├── popup.html             # Extension popup UI
 ├── popup.js               # Popup logic and chat interaction
 ├── config.js              # Central settings and defaults management
