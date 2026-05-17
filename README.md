@@ -63,10 +63,22 @@ The file `system-prompt.md` defines how the LLM behaves — including action pri
 
 MIT License — see the [LICENSE](LICENSE) file for details.
 
+## A Note from the Author
+
+Thank you for checking out **Lazy Browser**! This project was built to make browsing a little lazier — and hopefully a little smarter too.
+
+I won't be actively maintaining this project going forward, but you're more than welcome to clone it, fork it, modify it, and make it your own. I truly hope everyone gets their own lazy helper tailored just for them.
+
+If this project has been useful to you, consider buying me a coffee — it's always appreciated.
+
 ---
 
 <p align="center">
   <sub>Available on the Chrome Web Store</sub><br>
   <a href="https://chromewebstore.google.com"><img src="https://img.shields.io/badge/Chrome%20Web%20Store-available-blue?logo=googlechrome&logoColor=white" alt="Chrome Web Store"></a>
+  <br><br>
+  <a href="https://github.com/nkyang10"><img src="https://img.shields.io/badge/GitHub-nkyang10-181717?logo=github&logoColor=white" alt="GitHub"></a>
+  <a href="https://buymeacoffee.com/markyang"><img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-markyang-ffdd00?logo=buymeacoffee&logoColor=black" alt="Buy Me a Coffee"></a>
+  <br>
   <img src="https://img.shields.io/badge/made%20with-love-red" alt="Made with love">
 </p>

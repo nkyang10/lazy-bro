@@ -382,3 +382,6 @@ body {
 .checkbox-group label { display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; }
 .checkbox-group input[type="checkbox"] { width: auto; margin: 0; }
 .help-text { font-size: 10px; color: #999; margin: 2px 0 0 0; }
+.support-section { margin-top: 12px; padding-top: 12px; border-top: 1px solid #e0e0e0; text-align: center; }
+.support-link { font-size: 11px; color: #10a37f; text-decoration: none; }
+.support-link:hover { text-decoration: underline; }

@@ -74,6 +74,12 @@ class SettingsPanel {
           <input type="file" id="importFile" accept=".json" style="display:none" />
           <p class="help-text">Your API key is included in the export file as plaintext. Keep the exported JSON secure.</p>
         </div>
+        <div class="support-section">
+          <p class="help-text">Lazy Browser is no longer actively maintained, but you're welcome to clone and make it your own.</p>
+          <a href="https://buymeacoffee.com/markyang" target="_blank" class="support-link">Buy me a coffee</a>
+          <span class="help-text"> | </span>
+          <a href="https://github.com/nkyang10" target="_blank" class="support-link">GitHub</a>
+        </div>
       </div>
     `;
 
